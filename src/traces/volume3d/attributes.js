@@ -57,17 +57,6 @@ module.exports = extendFlat({
             'Sets iso surface boundaries.'
         ].join(' ')
     },
-    meshalgo: {
-        valType: 'string',
-        role: 'info',
-        dflt: 'MarchingCubes',
-        editType: 'calc',
-        description: [
-            'Sets the isosurface polygonizer algorithm:',
-            'including: `MarchingCubes` (i.e. default),',
-            '`MarchingTetrahedra` or `SurfaceNets`.'
-        ].join(' ')
-    },
 
     text: {
         valType: 'string',
@@ -87,7 +76,7 @@ module.exports = extendFlat({
         valType: 'color',
         role: 'style',
         editType: 'calc',
-        description: 'Sets the color of the whole isosurface'
+        description: 'Sets the color of the whole trace'
     },
     vertexcolor: {
         valType: 'data_array',
@@ -127,8 +116,8 @@ colorscaleAttrs('', {
         dflt: false,
         editType: 'calc',
         description: [
-            'Determines whether or not normal smoothing is applied to the isosurfaces,',
-            'creating isosurfaces with an angular, low-poly look via flat reflections.'
+            'Determines whether or not normal smoothing is applied to the surfaces,',
+            'creating surfaces with an angular, low-poly look via flat reflections.'
         ].join(' ')
     },
 

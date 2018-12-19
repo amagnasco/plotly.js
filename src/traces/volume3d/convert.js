@@ -9,14 +9,13 @@
 
 'use strict';
 
-var createIsosurface = require('isosurface');
 var createMesh = require('gl-mesh3d');
 
 var parseColorScale = require('../../lib/gl_format_color').parseColorScale;
 var str2RgbaArray = require('../../lib/str2rgbarray');
 var zip3 = require('../../plots/gl3d/zip3');
 
-function IsosurfaceTrace(scene, mesh, uid) {
+function Volume3dTrace(scene, mesh, uid) {
     this.scene = scene;
     this.uid = uid;
     this.mesh = mesh;
@@ -26,7 +25,7 @@ function IsosurfaceTrace(scene, mesh, uid) {
     this.showContour = false;
 }
 
-var proto = IsosurfaceTrace.prototype;
+var proto = Volume3dTrace.prototype;
 
 proto.handlePick = function(selection) {
     if(selection.object === this.mesh) {
@@ -57,7 +56,7 @@ proto.update = function(data) {
     var scene = this.scene,
         layout = scene.fullSceneLayout;
 
-    this.data = generateIsosurfaceMesh(data);
+    this.data = generateVolume3dMesh(data);
 
     // Unpack position data
     function toDataCoords(axis, coord, scale, calendar) {
@@ -119,11 +118,7 @@ proto.dispose = function() {
     this.mesh.dispose();
 };
 
-var SURFACE_NETS = 'SurfaceNets';
-var MARCHING_CUBES = 'MarchingCubes';
-var MARCHING_TETRAHEDRA = 'MarchingTetrahedra';
-
-function generateIsosurfaceMesh(data) {
+function generateVolume3dMesh(data) {
 
     data.intensity = [];
 
@@ -136,6 +131,7 @@ function generateIsosurfaceMesh(data) {
     var allZs = [];
 
     var allCs = [];
+    var allMs = [];
 
     var width = data.x.length;
     var height = data.y.length;
@@ -147,121 +143,99 @@ function generateIsosurfaceMesh(data) {
     var Ys = []; for(j = 0; j < height; j++) { Ys[j] = data.y[j]; }
     var Zs = []; for(k = 0; k < depth; k++) { Zs[k] = data.z[k]; }
 
-    var bounds = [
-        [
-            Math.min.apply(null, Xs),
-            Math.min.apply(null, Ys),
-            Math.min.apply(null, Zs)
-        ],
-        [
-            Math.max.apply(null, Xs),
-            Math.max.apply(null, Ys),
-            Math.max.apply(null, Zs)
-        ]
-    ];
+    var imin = (data.isovalue[0] !== null) ? data.isovalue[0] : Math.min.apply(null, data.volume);
+    var imax = (data.isovalue[1] !== null) ? data.isovalue[1] : Math.max.apply(null, data.volume);
 
-    var dims = [width, height, depth];
+    function getIndex(i, j, k) {
+        return i + width * j + width * height * k;
+    }
 
-    var num_vertices = 0;
-    for(var iso_id = 0; iso_id < data.isovalue.length; iso_id++) {
+    // record positions and colors
+    for(k = 0; k < depth; k++) {
+        for(j = 0; j < height; j++) {
+            for(i = 0; i < width; i++) {
+                allXs.push(Xs[i]);
+                allYs.push(Ys[j]);
+                allZs.push(Zs[k]);
 
-        var intensity = data.isovalue[iso_id];
-
-        var fXYZs = [];
-
-        var n = 0;
-        for(k = 0; k <= depth; k++) {
-            for(j = 0; j <= height; j++) {
-                for(i = 0; i <= width; i++) {
-
-                    var index = i + width * j + width * height * k;
-
-                    fXYZs[n] = data.volume[index] - data.isovalue[iso_id];
-
-                    n++;
-                }
+                var v = data.volume[getIndex(i, j, k)];
+                allCs.push(v);
+                allMs.push((v > imax || v < imin) ? false : true);
             }
         }
+    }
 
-        var isosurfaceMesh = // Note: data array is passed without bounds to disable rescales
-            (data.meshalgo === SURFACE_NETS) ?
-                createIsosurface.surfaceNets(dims, fXYZs) :
-            (data.meshalgo === MARCHING_TETRAHEDRA) ?
-                createIsosurface.marchingTetrahedra(dims, fXYZs) :
-            (data.meshalgo === MARCHING_CUBES) ?
-                createIsosurface.marchingCubes(dims, fXYZs) :
-                createIsosurface.marchingCubes(dims, fXYZs); // i.e. default
+    function addRect(a, b, c, d) {
 
-        var q, len;
+        if(allMs[a] && allMs[b] && allMs[c] && allMs[d]) {
+            data.i.push(a); data.j.push(b); data.k.push(c);
+            data.i.push(c); data.j.push(d); data.k.push(a);
+            return;
+        }
 
-        var positions = isosurfaceMesh.positions;
-        len = positions.length;
+        if(allMs[a] && allMs[b] && allMs[c]) {
+            data.i.push(a); data.j.push(b); data.k.push(c);
+            return;
+        }
 
-        var axis, min, max;
+        if(allMs[a] && allMs[b] && allMs[d]) {
+            data.i.push(a); data.j.push(b); data.k.push(d);
+            return;
+        }
 
-        // map pixel coordinates (0..n) to (real) world coordinates
-        for(axis = 0; axis < 3; axis++) {
-            min = bounds[0][axis];
-            max = bounds[1][axis];
-            for(q = 0; q < len; q++) {
-                positions[q][axis] = min + (max - min) * positions[q][axis] / (dims[axis] - 1);
+        if(allMs[a] && allMs[c] && allMs[d]) {
+            data.i.push(a); data.j.push(c); data.k.push(d);
+            return;
+        }
+
+        if(allMs[b] && allMs[c] && allMs[d]) {
+            data.i.push(b); data.j.push(c); data.k.push(d);
+            return;
+        }
+    }
+
+    // record positions and colors
+    var p00, p01, p10, p11;
+    for(j = 1; j < height; j++) {
+        for(i = 1; i < width; i++) {
+
+            for(k = 0; k < depth; k++) {
+                p00 = getIndex(i - 1, j - 1, k);
+                p01 = getIndex(i - 1, j, k);
+                p10 = getIndex(i, j - 1, k);
+                p11 = getIndex(i, j, k);
+
+                addRect(p00, p01, p11, p10);
             }
         }
+    }
 
-        // handle non-uniform 3D space
-        for(axis = 0; axis < 3; axis++) {
-            var xyz = (axis === 0) ? data.x : (axis === 1) ? data.y : data.z;
+    for(k = 1; k < depth; k++) {
+        for(j = 1; j < height; j++) {
 
-            min = bounds[0][axis];
-            max = bounds[1][axis];
+            for(i = 0; i < width; i++) {
+                p00 = getIndex(i, j - 1, k - 1);
+                p01 = getIndex(i, j - 1, k);
+                p10 = getIndex(i, j, k - 1);
+                p11 = getIndex(i, j, k);
 
-            for(q = 0; q < len; q++) {
-                var here = positions[q][axis];
-
-                var minDist = Infinity;
-                var first = 0;
-                var second = 0;
-
-                var dist;
-                for(i = 0; i < dims[axis]; i++) {
-                    dist = Math.abs(here - xyz[i]);
-
-                    if(dist < minDist) {
-                        minDist = dist;
-                        second = first;
-                        first = i;
-                    }
-                }
-
-                if(dist > 0 && first !== second) {
-
-                    var d1 = -(here - xyz[first]);
-                    var d2 = (here - xyz[second]);
-
-                    positions[q][axis] = (xyz[first] * d2 + xyz[second] * d1) / (d1 + d2);
-                }
+                addRect(p00, p01, p11, p10);
             }
         }
+    }
 
-        // record positions
-        for(q = 0; q < len; q++) {
-            allXs.push(positions[q][0]);
-            allYs.push(positions[q][1]);
-            allZs.push(positions[q][2]);
+    for(i = 1; i < width; i++) {
+        for(k = 1; k < depth; k++) {
 
-            allCs.push(intensity);
+            for(j = 0; j < height; j++) {
+                p00 = getIndex(i - 1, j, k - 1);
+                p01 = getIndex(i, j, k - 1);
+                p10 = getIndex(i - 1, j, k);
+                p11 = getIndex(i, j, k);
+
+                addRect(p00, p01, p11, p10);
+            }
         }
-
-        // record cells
-        var cells = isosurfaceMesh.cells;
-        len = cells.length;
-        for(q = 0; q < len; q++) {
-            data.i.push(cells[q][0] + num_vertices);
-            data.j.push(cells[q][1] + num_vertices);
-            data.k.push(cells[q][2] + num_vertices);
-        }
-
-        num_vertices += positions.length;
     }
 
     data.x = allXs;
@@ -272,13 +246,13 @@ function generateIsosurfaceMesh(data) {
     return data;
 }
 
-function createIsosurfaceTrace(scene, data) {
+function createVolume3dTrace(scene, data) {
 
     var gl = scene.glplot.gl;
 
     var mesh = createMesh({gl: gl});
 
-    var result = new IsosurfaceTrace(scene, mesh, data.uid);
+    var result = new Volume3dTrace(scene, mesh, data.uid);
 
     mesh._trace = result;
     result.update(data);
@@ -286,4 +260,4 @@ function createIsosurfaceTrace(scene, data) {
     return result;
 }
 
-module.exports = createIsosurfaceTrace;
+module.exports = createVolume3dTrace;
