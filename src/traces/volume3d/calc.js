@@ -11,8 +11,12 @@
 var colorscaleCalc = require('../../components/colorscale/calc');
 
 module.exports = function calc(gd, trace) {
+
+    var imin = (trace.isovalue[0] !== null) ? trace.isovalue[0] : Math.min.apply(null, trace.volume);
+    var imax = (trace.isovalue[1] !== null) ? trace.isovalue[1] : Math.max.apply(null, trace.volume);
+
     colorscaleCalc(gd, trace, {
-        vals: trace.isovalue,
+        vals: [imin, imax],
         containerStr: '',
         cLetter: 'c'
     });
