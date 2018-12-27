@@ -93,6 +93,7 @@ function setPositionOffset(traceType, gd, boxList, posAxis) {
         var width = trace.width;
         var side = trace.side;
         var pointpos = trace.pointpos;
+        var hasPts = trace.boxpoints || trace.points;
 
         // position coordinate delta
         var dPos;
@@ -118,13 +119,17 @@ function setPositionOffset(traceType, gd, boxList, posAxis) {
         t.bdPos = bdPos;
         t.wHover = wHover;
 
-        var edge = bPos + bdPos;
         // data-space padding
         var vpadplus = 0;
         var vpadminus = 0;
         // pixel-space padding
         var ppadplus;
         var ppadminus;
+
+        // use edge of box/violin when pts are present
+        // for more precise computation, otherwise
+        // the position delta gives good enough results
+        var edge = hasPts ? bPos + bdPos : dPos;
 
         if(side === 'positive') {
             vpadplus = edge;
@@ -137,18 +142,18 @@ function setPositionOffset(traceType, gd, boxList, posAxis) {
             vpadminus = edge;
         }
 
-        if(trace.boxpoints || trace.points) {
+        if(hasPts) {
             var jitter = trace.jitter;
             var ms = trace.marker.size / 2;
 
-            if((pointpos + jitter) >= 0) {
+            if((pointpos + jitter) >= vpadplus) {
                 ppadplus = ms;
-                var pp = bPos + bdPos * (pointpos + jitter);
+                var pp = edge * (pointpos + jitter);
                 if(pp > vpadplus) vpadplus = pp;
             }
-            if((pointpos - jitter) <= 0) {
+            if((pointpos - jitter) <= -vpadminus) {
                 ppadminus = ms;
-                var pm = -bPos - bdPos * (pointpos - jitter);
+                var pm = -edge * (pointpos - jitter);
                 if(pm > vpadminus) vpadminus = pm;
             }
         }
@@ -163,8 +168,8 @@ function setPositionOffset(traceType, gd, boxList, posAxis) {
             // N.B. SVG px-space positive/negative
             ppadminus: {x: ppadminus, y: ppadplus}[axLetter],
             ppadplus: {x: ppadplus, y: ppadminus}[axLetter],
-            // add 5% of both sides
-            padded: true
+            // add 5% of both sides for points
+            padded: hasPts
         });
     }
 }
